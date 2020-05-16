@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-int main(int argc, char** argv) {
+int main(int, char**) {
   Genome g = loadGenomeFromPlainFile("./data/Vibrio_cholerae_ori.txt");
   std::cout << g << std::endl;
   for (size_t i = 3; i < 10; i++) {

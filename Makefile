@@ -1,20 +1,25 @@
 
 all: build
 
-cmake-build:
+cmake-build: build/genes/Makefile
+
+build/genes/Makefile:
 	mkdir -p build
-	cmake -B build/genes
+	cmake -Wno-dev -B build/genes
 
-build: cmake-build
-	make -C build/genes
+build: build/genes/Makefile
+	make -C build/genes -j16
 
-cmd: cmake-build
-	make -C build/genes GenesCmds
+cmd: build/genes/Makefile
+	make -C build/genes -j16 GenesCmds
 
-fmt: cmake-build
+fmt: build/genes/Makefile
 	make -C build/genes clang-format
 
-clean:
+build-clean: 
 	rm -rf build/
 
-.PHONY: all cmake-build build fmt clean test
+clean: build/genes/Makefile
+	make -C build/genes clean
+
+.PHONY: all cmake-build build cmd fmt build-clean clean test
