@@ -5,8 +5,10 @@ Teaching myself CUDA using C++ by doing some stuff with genomes
 # Building
 
 ```
-cmake -Hstandalone -Bbuild/standalone
-make -C build/standalone
+make
+make cmd && build/genes/cmd/Genes
+make benchmark
+make fmt
 ```
 
 # References
