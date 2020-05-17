@@ -5,45 +5,39 @@
 
 static const std::streamsize BUF_SIZE = 102400;
 
-Genome loadGenomeFromPlainFile(const std::string &filename) {
-  std::ifstream f(filename.c_str(), std::ifstream::in);
-  char *buffer = new char[BUF_SIZE];
+GBuf::SharedConstPtr GBuf::makeFromIfstream(std::ifstream *f) {
+  char buffer[BUF_SIZE];
 
-  if (f.fail()) {
-    throw std::runtime_error(
-        str(boost::format("Could not open %s") % filename));
-  }
+  f->seekg(0, f->end);
+  std::streamsize size = f->tellg();
+  f->seekg(0, f->beg);
 
-  f.seekg(0, f.end);
-  std::streamsize size = f.tellg();
-  f.seekg(0, f.beg);
-
-  Genome g(filename, size);
+  GBuf::SharedPtr gbuf(std::make_shared<GBuf>(size));
 
   size_t pairsCur = 0;
-  while (f.good()) {
-    f.read(buffer, BUF_SIZE);
-    std::streamsize n = f.gcount();
+  while (f->good()) {
+    f->read(buffer, BUF_SIZE);
+    std::streamsize n = f->gcount();
     for (std::streamsize i = 0; i < n; i++) {
       switch (buffer[i]) {
         case 'A':
         case 'a':
-          g.pairs[pairsCur] = Basepair::A;
+          gbuf->basepairs_[pairsCur] = Basepair::A;
           pairsCur++;
           break;
         case 'C':
         case 'c':
-          g.pairs[pairsCur] = Basepair::C;
+          gbuf->basepairs_[pairsCur] = Basepair::C;
           pairsCur++;
           break;
         case 'G':
         case 'g':
-          g.pairs[pairsCur] = Basepair::G;
+          gbuf->basepairs_[pairsCur] = Basepair::G;
           pairsCur++;
           break;
         case 'T':
         case 't':
-          g.pairs[pairsCur] = Basepair::T;
+          gbuf->basepairs_[pairsCur] = Basepair::T;
           pairsCur++;
           break;
         case ' ':
@@ -53,17 +47,26 @@ Genome loadGenomeFromPlainFile(const std::string &filename) {
           break;
         default:
           throw std::runtime_error(
-              str(boost::format("Unexpected basepair in %s at %d: %c")
-                  % filename % i % buffer[i]));
+              str(boost::format("Unexpected basepair at %d: %c") % i
+                  % buffer[i]));
       }
     }
   }
-  return g;
+  return gbuf;
+}
+
+Genome loadGenomeFromPlainFile(const std::string &filename) {
+  std::ifstream f(filename.c_str(), std::ifstream::in);
+  if (f.fail()) {
+    throw std::runtime_error(
+        str(boost::format("Could not open %s") % filename));
+  }
+  GBuf::SharedConstPtr g = GBuf::makeFromIfstream(&f);
+  return Genome(filename, g);
 }
 
 std::ostream &operator<<(std::ostream &os, const Genome &g) {
-  return os << "Genome " << g.description << " has " << g.pairs.size()
-            << " pairs";
+  return os << "Genome " << g.description << " has " << g.size() << " pairs";
 }
 
 StringFrequency Genome::stringFrequency(size_t n) const {
@@ -80,8 +83,8 @@ StringFrequency::StringFrequency(const Genome &g, size_t n) : n_(n) {
   //    increment that record.
   //
   // 2) Else, prefer the version that is lexicographically earlier.
-  auto inc = [=](const Basepairs::const_iterator &begin) {
-    BPString s(begin, n);
+  auto inc = [=](const size_t i) {
+    BPString s = g.slice(i, n);
     auto v = map_.find(s);
     if (v != map_.end()) {
       v->second += 1;
@@ -101,10 +104,8 @@ StringFrequency::StringFrequency(const Genome &g, size_t n) : n_(n) {
     }
   };
 
-  Basepairs::const_iterator cur_begin = g.pairs.begin();
-  for (size_t remaining = g.pairs.size() + 1 - n; remaining > 0;
-       --remaining, ++cur_begin) {
-    inc(cur_begin);
+  for (size_t i = 0; i + n < g.size(); i++) {
+    inc(i);
   }
 
   // Create a vector of entries in the map, sorted by frequency, so
@@ -126,19 +127,19 @@ std::vector<size_t> Genome::findString_(const BPString &needle,
   const BPString needleC = needle.complement();
 
   auto cmp = [=](size_t cur, const BPString &rhs) {
-    if (needle.size() + cur > pairs.size()) {
+    if (needle.size() + cur > pairs->size()) {
       // Would run past
       return false;
     }
     for (size_t i = 0; i < rhs.size(); i++) {
-      if (pairs[cur + i] != rhs[i]) {
+      if ((*pairs)[cur + i] != rhs[i]) {
         return false;
       }
     }
     return true;
   };
 
-  for (size_t i = 0; i < pairs.size(); i++) {
+  for (size_t i = 0; i < pairs->size(); i++) {
     if (alsoComplement) {
       if (cmp(i, needle) || cmp(i, needleC)) {
         r.push_back(i);

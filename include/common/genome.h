@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <exception>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -41,68 +42,71 @@ inline char toChar(const Basepair &bp) {
   }
 }
 
-typedef std::vector<Basepair> Basepairs;
-class BPString : public Basepairs {
+inline Basepair complement(const Basepair &bp) {
+  switch (bp) {
+    case Basepair::A:
+      return Basepair::T;
+    case Basepair::C:
+      return Basepair::G;
+    case Basepair::G:
+      return Basepair::C;
+    case Basepair::T:
+      return Basepair::A;
+    default:
+      throw std::invalid_argument("Basepair not A, C, G or T");
+  }
+}
+
+class BPString;
+class GBuf : public std::enable_shared_from_this<GBuf> {
 public:
-  BPString(const char *bpString) : Basepairs(strlen(bpString)) {
-    for (size_t i = 0; i < this->size(); i++) {
-      (*this)[i] = toBasepair(bpString[i]);
-    }
-  }
-  BPString(const Basepairs::const_iterator &begin, size_t n) : Basepairs(n) {
-    Basepairs::const_iterator j = begin;
-    for (size_t i = 0; i < n; ++i, ++j) {
-      (*this)[i] = *j;
-    }
-  }
+  typedef std::shared_ptr<GBuf> SharedPtr;
+  typedef std::shared_ptr<const GBuf> SharedConstPtr;
 
-  struct Hasher {
-    std::size_t operator()(const BPString &k) const {
-      std::size_t out = 0;
-      std::for_each(k.begin(), k.end(), [&out](const Basepair &b) {
-        out ^= (out << 2 | static_cast<uint8_t>(b));
-      });
-      return out;
-    }
-  };
+  // Prefer the make* factories
+  explicit GBuf(size_t len) : basepairs_(len) {}
 
-  std::string toString() const {
-    std::string s(this->size(), '\0');
-    size_t j = 0;
-    for (Basepairs::const_iterator i = this->begin(); i != this->end();
-         i++, j++) {
-      s[j] = toChar(*i);
+  static SharedConstPtr makeFromString(const char *basepairs) {
+    size_t len = strlen(basepairs);
+    std::shared_ptr<GBuf> g = std::make_shared<GBuf>(len);
+    for (size_t i = 0; i < len; i++) {
+      g->basepairs_[i] = toBasepair(basepairs[i]);
     }
-    return s;
+    return g;
   }
 
-  BPString complement() const {
-    BPString s = BPString(this->toString().c_str());
-    for (size_t i = 0; i < this->size(); i++) {
-      Basepair complement;
-      switch ((*this)[i]) {
-        case Basepair::A:
-          complement = Basepair::T;
-          break;
-        case Basepair::C:
-          complement = Basepair::G;
-          break;
-        case Basepair::G:
-          complement = Basepair::C;
-          break;
-        case Basepair::T:
-          complement = Basepair::A;
-          break;
-        default:
-          throw std::invalid_argument("Basepair not A, C, G or T");
-      }
-      s[this->size() - 1 - i] = complement;
-    }
-    return s;
+  static SharedConstPtr makeFromIfstream(std::ifstream *f);
+
+  const Basepair &operator[](size_t offset) const {
+    return basepairs_[offset];
+  }
+
+  BPString slice(size_t offset, size_t len) const;
+  size_t size() const { return basepairs_.size(); }
+
+private:
+  std::vector<Basepair> basepairs_;
+};
+
+class BPString {
+  friend class GBuf;
+
+public:
+  static BPString makeFromString(const char *basepairs) {
+    GBuf::SharedConstPtr g(GBuf::makeFromString(basepairs));
+    return g->slice(0, g->size());
+  }
+
+  size_t size() const { return len_; }
+
+  Basepair operator[](const size_t offset) const {
+    return isComplement_
+               ? ::complement((*gbuf_)[(offset_ + len_ - 1 - offset)])
+               : (*gbuf_)[(offset_ + offset)];
   }
 
   bool operator<(const BPString &rhs) const {
-    for (size_t i = 0; i < this->size(); i++) {
+    for (size_t i = 0; i < size(); i++) {
       if (i >= rhs.size()) {
         // LHS is longer than RHS, but prefix matches RHS,
         // so RHS sorts lexicographically earlier ("book" < "bookworm")
@@ -120,17 +124,59 @@ public:
   }
 
   bool operator==(const BPString &rhs) const {
+    if (this->gbuf_ == rhs.gbuf_ && this->offset_ == rhs.offset_
+        && this->len_ == rhs.len_
+        && this->isComplement_ == rhs.isComplement_) {
+      return true;
+    }
     if (this->size() != rhs.size()) {
       return false;
     }
-    for (size_t i = 0; i < this->size(); i++) {
+    for (size_t i = 0; i < size(); i++) {
       if ((*this)[i] != rhs[i]) {
         return false;
       }
     }
     return true;
   }
+
+  struct Hasher {
+    std::size_t operator()(const BPString &k) const {
+      std::size_t out = 0;
+      for (size_t i = 0; i < k.size(); i++) {
+        out ^= (out << 2 | static_cast<uint8_t>(k[i]));
+      };
+      return out;
+    }
+  };
+
+  std::string toString() const {
+    std::string s(len_, '\0');
+    for (size_t i = 0; i < size(); i++) {
+      s[i] = toChar((*this)[i]);
+    }
+    return s;
+  }
+
+  BPString complement() const {
+    BPString c(gbuf_, offset_, len_);
+    c.isComplement_ = true;
+    return c;
+  }
+
+private:
+  BPString(const GBuf::SharedConstPtr &gbuf, size_t offset, size_t len)
+      : gbuf_(gbuf), offset_(offset), len_(len), isComplement_(false) {}
+
+  GBuf::SharedConstPtr gbuf_;
+  size_t offset_;
+  size_t len_;
+  bool isComplement_;
 };
+
+inline BPString GBuf::slice(size_t offset, size_t len) const {
+  return BPString(shared_from_this(), offset, len);
+}
 
 class Genome;
 class StringFrequency {
@@ -154,10 +200,13 @@ std::ostream &operator<<(std::ostream &os, const StringFrequency &fm);
 
 class Genome {
 public:
-  Genome(const std::string &description, const Basepairs &bps)
+  Genome(const std::string &description, const GBuf::SharedConstPtr &bps)
       : description(description), pairs(bps){};
-  Genome(const std::string &description, size_t bpSize)
-      : description(description), pairs(bpSize){};
+
+  size_t size() const { return pairs->size(); }
+  BPString slice(size_t offset, size_t len) const {
+    return pairs->slice(offset, len);
+  }
 
   StringFrequency stringFrequency(size_t n) const;
 
@@ -169,7 +218,7 @@ public:
   }
 
   std::string description;
-  Basepairs pairs;
+  GBuf::SharedConstPtr pairs;
 
 private:
   std::vector<size_t> findString_(const BPString &needle,

@@ -14,7 +14,7 @@ int main(int, char**) {
 
   Genome gg = loadGenomeFromPlainFile("./data/Vibrio_cholerae.txt");
   std::cout << g << std::endl;
-  const BPString dnaACandidate("ATGATCAAG");
+  const BPString dnaACandidate = BPString::makeFromString("ATGATCAAG");
   const std::vector<size_t> occurrences = gg.findString(dnaACandidate);
   std::cout << occurrences.size() << " occurrences of DnaA candidate "
             << dnaACandidate.toString()
