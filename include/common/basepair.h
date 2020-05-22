@@ -1,5 +1,6 @@
 #pragma once
-#include <exception>
+#include <cstdint>
+#include <stdexcept>
 
 enum class Basepair : std::uint8_t { A, C, G, T };
 
@@ -47,5 +48,3 @@ inline Basepair complement(const Basepair &bp) {
       throw std::invalid_argument("Basepair not A, C, G or T");
   }
 }
-
-

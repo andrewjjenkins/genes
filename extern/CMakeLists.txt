@@ -8,6 +8,7 @@ FetchContent_Declare(googletest
 FetchContent_GetProperties(googletest)
 FetchContent_MakeAvailable(googletest)
 set(GTEST_INCLUDE_DIR "${googletest_SOURCE_DIR}/googletest/include")
+set(GTEST_INCLUDE_DIR "${googletest_SOURCE_DIR}/googletest/include" PARENT_SCOPE)
 set(GTEST_LIBRARY "${googletest_BINARY_DIR}/googlemock/gtest/libgtest.a")
 set(GTEST_MAIN_LIBRARY "${googletest_BINARY_DIR}/googlemock/gtest/libgtest_main.a")
 set(GMOCK_INCLUDE_DIRS "${googletest_SOURCE_DIR}/googlemock/include")

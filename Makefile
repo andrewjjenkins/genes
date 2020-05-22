@@ -24,6 +24,10 @@ benchmark: build_release/genes/Makefile
 	make -C build_release/genes -j16 GenesBenchmark
 	build_release/genes/test/GenesBenchmark --benchmark_repetitions=5 --benchmark_color=true
 
+test: build/genes/Makefile
+	make -C build/genes GenesUnitTest
+	build/genes/test/GenesUnitTest
+
 build-clean: 
 	rm -rf build/ build-release/
 
